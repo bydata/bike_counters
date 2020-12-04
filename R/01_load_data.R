@@ -8,16 +8,19 @@ library(lubridate)
 #'
 #' @description Retrieve bike counter data from eco-visio.net.
 #' @param domain The town to pull the data for. 677 is Cologne, Germany.
+#' @param from Start of date range to pull the data. Default is earliest date available.
+#' @param from End of date range to pull the data. Default is latest date available.
 #' @param interval The time interval to pull the data for.
 #'     Available intervals: "1 hour", "4 hours", "1 day", "1 week". Default: "1 day".
-#' @param output_format "list" or "df" (data frame)
+#' @param output_format "list" or "df" (data frame). Default: "list"
 #'
 #' @return A list of counter infos and counter data (output_format = "list") 
 #'     or a dataframe with counter infos and data merged.
 #' @export
 #'
 #' @examples
-retrieve_counter_data <- function(domain, 
+retrieve_counter_data <- function(domain,
+                                  from = NULL, to = NULL,
                                   interval = c("1 day", "1 hour", "4 hours", "1 week"),
                                   output_format = c("list", "df")) {
   
@@ -47,6 +50,27 @@ retrieve_counter_data <- function(domain,
            across(c(begin, today), format, "%Y%m%d"),
            idPdc = as.character(idPdc))
   
+  # set start and end date
+  if (!missing(from)) {
+    if (class(from) == "Date") {
+      counters_info$begin <- format(from, "%Y%m%d")
+    } else {
+      warning("Argument `from` must be a Date. Retrieving all data.")
+    }
+  }  
+  if (!missing(to)) {
+    if (class(end) == "Date") {
+      if (end > date) {
+        counters_info$end <- format(to,  "%Y%m%d")        
+      } else{
+        warning("Argument `end` must be a date after `from`. Retrieving data up until today.")
+      }
+    } else {
+      warning("Argument `end` must be a Date. Retrieving all data.")
+      counters_info$end <- counters_info$today
+    }
+  }
+    
   # get the ids of the counters
   counter_ids <- map_chr(counter_list, `[[`, "idPdc")
   
@@ -73,16 +97,14 @@ retrieve_counter_data <- function(domain,
   message("Retrieving counter data from API. This might take a while.")
   responses <- map(counter_data_urls, GET)
   responses <- set_names(responses, counter_ids)
-  message("map content")
-  content <- map(responses, content)
   
-  message("bind rows")
+  message("Transforming counter data. This might take a while.")
+  content <- map(responses, content)
   # dplyr::bind_rows is slow, use vctrs::vec_bind instead (https://github.com/tidyverse/dplyr/issues/5370) 
   # counters_data <- map(content, possibly(bind_rows, otherwise = NULL))
   counters_data <- map(content, 
                        ~vctrs::vec_rbind(!!!.x) %>% 
                          unnest(cols = c(date, comptage, timestamp)))
-  
   
   message("Preparing counter data.")
   prepare_df <- function(df, name) {
@@ -114,3 +136,5 @@ tic()
 counters_hourly <- retrieve_counter_data(domain, interval = "1 hour", output_format = "list")
 write_rds(counters_hourly, file.path("data", "counters_677_hourly.rds"))
 toc()
+
+counters <- retrieve_counter_data(domain, from = as_date("2020-01-01"))
