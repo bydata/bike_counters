@@ -21,7 +21,7 @@ library(lubridate)
 #' @examples
 retrieve_counter_data <- function(domain,
                                   from = NULL, to = NULL,
-                                  interval = c("1 day", "1 hour", "4 hours", "1 week"),
+                                  interval = c("1 day", "15 mins", "1 hour", "1 week", "1 month"),
                                   output_format = c("list", "df")) {
   
   if (missing(interval)) interval <- "1 day"
@@ -83,16 +83,17 @@ retrieve_counter_data <- function(domain,
   
   # urls to the data from the counters
   step <- switch(interval,
-                 "1 hour" = 1,
-                 "4 hours" = 2,
+                 "15 mins" = 1,
+                 "1 hour" = 3,
                  "1 day" = 4,
-                 "1 week" = 5)
+                 "1 week" = 5,
+                 "1 month" = 6)
   
   counter_data_urls <- counters_info %>% 
     bind_cols(token = tokens) %>% 
     mutate(url = glue("https://www.eco-visio.net/api/aladdin/1.0.0/pbl/publicwebpage/data/{cumulFlowId}?begin={begin}&end={today}&step={step}&domain={domain}&withNull=true&t={token}")) %>% 
     pull()
-  
+
   # retrieve counter data
   message("Retrieving counter data from API. This might take a while.")
   responses <- map(counter_data_urls, GET)
@@ -109,9 +110,10 @@ retrieve_counter_data <- function(domain,
   message("Preparing counter data.")
   prepare_df <- function(df, name) {
     df %>%
-      mutate(date = as_date(date),
+      mutate(date_time = as_datetime(date),
+             date = as_date(date),
              id = name) %>%
-      select(id, date, timestamp, count = comptage) 
+      select(id, date, date_time, timestamp, count = comptage) 
   }
   
   counters_data <- map2(counters_data, names(counters_data), prepare_df)
@@ -133,8 +135,10 @@ write_rds(counters, file.path("data", "counters_677_daily.rds"))
 
 library(tictoc)
 tic()
-counters_hourly <- retrieve_counter_data(domain, interval = "1 hour", output_format = "list")
+counters_hourly <- retrieve_counter_data(domain, 
+                                         interval = "1 hour", 
+                                         output_format = "list")
 write_rds(counters_hourly, file.path("data", "counters_677_hourly.rds"))
 toc()
 
-counters <- retrieve_counter_data(domain, from = as_date("2020-01-01"))
+# counters <- retrieve_counter_data(domain, from = as_date("2020-01-01"))
